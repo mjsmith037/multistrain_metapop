@@ -2,66 +2,44 @@ library(magrittr)
 library(tidyverse)
 library(JuliaCall)
 
-julia_setup()
-julia_source("state_space_exploration.jl")
+my_cols <- c("#f74700", "#016394", "#b6003b", "#005342")
 
-mantis_output <- julia_call("explore_parameter_space_one_pop")
+julia_setup()
+julia_source("../../code/state_space_exploration.jl")
+
+mantis_output <- julia_call("state_space_exploration",
+                            rnaught=seq(1, 5, length.out=5),
+                            m=seq(0.01, 0.25, length.out=5))
 save.image("~/Desktop/tmp22_wR0_1pop.RData")
 
-clean_output <- . %>%
-  as.data.frame() %>%
-  mutate_all(unlist) %>%
-  as_tibble() %>%
-  rename(strain=V1, n_extrema=V2, gamma=V3, sigma=V4, R0=V5, mu=V6) %>%
-  mutate(dynamics = case_when(n_extrema == 0 ~ "extinct",
-                              n_extrema == 1 ~ "steady",
-                              n_extrema > 1 ~ "cycles")) %>%
-  group_by(gamma, sigma, R0, mu) %>%
-  summarise(dynamics = dynamics %>% sort() %>% table() %>% {str_c(., names(.), collapse="")})
+all_results <- list.files("../../Results/SSE1p_R0,mu/", full.names=TRUE) %>%
+  lapply(read_csv,
+         col_names=c("strain", "n_extrema_noround", "n_extrema_round8", "gamma", "sigma", "R0", "mu"),
+         col_types="ddddddd") %>%
+  bind_rows() %>%
+  mutate_at(vars(starts_with("n_extrema")), get_dynamics) %>%
+  group_by(gamma, sigma, mu, R0) %>%
+  summarise_at(vars(starts_with("n_extrema")),
+               . %>% sort() %>% table() %>% {str_c(., names(.), collapse="")}) %>%
+  mutate_at(vars(starts_with("n_extrema")), ~case_when(. == "4steady" ~ "steady",
+                                                       . == "4cycles" ~ "cycles",
+                                                       str_detect(., "unconverged") ~ "unconverged",
+                                                       . == "2extinct2steady" ~ "extinct",
+                                                       TRUE ~ "unconverged"))
 
-plot_data <- clean_output(mantis_output)
+plot_data <- all_results %>% ungroup() %>%
+  select(gamma, sigma, mu, R0, dynamics=n_extrema_round8) %>%
+  complete(sigma, gamma, mu, R0, fill=list("dynamics"="unconverged"))
 
 ggplot(plot_data) +
-  aes(x=gamma, y=sigma, fill=dynamics) +
-  geom_raster() +
-  scale_y_log10() +
-  scale_fill_viridis_d(option="C") +
+  aes(x=R0, y=mu, fill=dynamics) +
+  xlab(expression(tilde(R)[0])) + ylab(expression(mu)) +
+  geom_raster(alpha=0.7) +
   coord_cartesian(expand=FALSE) +
-  facet_grid(mu~R0)
-  
-
-redone_params <- plot_data %>%
-  filter(dynamics %>% is_in(c("4steady", "4cycles", "2extinct2steady")) %>% not()) %>%
-  select(-dynamics) %>%
-  t() %>%
-  as.data.frame() %>% 
-  as.list() %>%
-  lapply(function(params) julia_call("explore_parameter_space_one_pop", tstep=0.5,
-                                     gamma=params[1], sigma=params[2], rnaught=params[3], mu=params[4]))
-
-new_plot_data <- lapply(redone_params, clean_output) %>% bind_rows()
-plot_data <- bind_rows(plot_data, new_plot_data)
-
-redone_params <- new_plot_data %>%
-  filter(dynamics %>% is_in(c("4steady", "4cycles", "2extinct2steady")) %>% not()) %>%
-  select(-dynamics) %>%
-  distinct() %>%
-  filter(R0 == 4, mu == 0.05) %>%
-  t() %>%
-  as.data.frame() %>% 
-  as.list() %>%
-  lapply(function(params) julia_call("explore_parameter_space_one_pop", tstep=0.05,
-                                     gamma=params[1], sigma=params[2], rnaught=params[3], mu=params[4]))
-
-new_plot_data <- lapply(redone_params, clean_output) %>% bind_rows()
-plot_data <- bind_rows(plot_data, new_plot_data)
-
-
-ggplot(plot_data %>%
-         filter(dynamics %>% is_in(c("4steady", "4cycles", "2extinct2steady")))) +
-  aes(x=gamma, y=sigma, fill=dynamics) +
-  geom_raster() +
-  scale_y_log10() +
-  scale_fill_manual(values=c("#f74700", "#016394", "#b6003b", "#005342")) +
-  coord_cartesian(expand=FALSE) +
-  facet_grid(mu~R0)
+  scale_fill_manual(values=my_cols) +
+  facet_grid(str_glue("{expression(sigma)}=={format(sigma, digits=3)}") ~
+               str_glue("{expression(gamma)}=={round(gamma, 3)}"),
+             labeller=label_parsed) +
+  theme_bw() +
+  theme(panel.grid=element_blank())
+ggsave("state_space_[2,2]_R0xmu.png", width=10, height=10)

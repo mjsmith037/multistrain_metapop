@@ -1,16 +1,14 @@
 library(magrittr)
 library(tidyverse)
-library(tidygraph)
 library(JuliaCall)
-library(ggraph)
 library(facetscales)
 
 julia_setup()
-julia_source("../../Code/multipop_MANTIS.jl")
+julia_source("../../code/multipop_MANTIS.jl")
 
 my_cols <- c("#f74700", "#016394", "#b6003b", "#005342")
 scales_y <- list(
-  `currently infectious (y)`    = scale_y_continuous(),
+  `currently infectious (y)`    = scale_y_continuous(limits = c(0, NA)),
   `specific immunity (z)`       = scale_y_continuous(limits = c(0, 1)),
   `cross-reactive immunity (w)` = scale_y_continuous(limits = c(0, 1))
 )
@@ -27,20 +25,22 @@ initial_conditions <- runif(prod(struct) * n_populations) %>%
   apply(1, . %>% {. / (5 * sum(.))}) %>%
   t()
 ## dynamical parameters
-beta <- 40            # Infection rate
-gamma <- 0.75         # partial cross-protective immunity (cpi)
-sigma <- 10           # recovery rate
-mu <- 0.05            # disease induced mortality
-# delta <- NA           # increase in cpi per allele (not yet implemented)
-# epsilon <- 0          # seasonality
-
+gamma <- 0.66                            # partial cross-protective immunity (cpi)
+sigma <- 8                               # recovery rate
 movement_rate <- 0.05
+mu <- 0.1
 chi <- matrix(c(-movement_rate, 0, 0, 0,
                 movement_rate, -movement_rate, 0, 0,
                 0, movement_rate, -movement_rate, 0,
                 0, 0, movement_rate, 0), 4, 4)
+beta <- 2 * (sigma + mu - diag(chi))     # Infection rate
 
-timeseries <- julia_call("runMANTIS", strainstructure=struct, tstep=1, tmax=1000,
+## integration parameters
+maxtime <- 1000
+tsteps <- round(0.85 * maxtime):maxtime
+
+## run the simulation
+timeseries <- julia_call("runMANTIS", strainstructure=struct, tstep=tsteps, tmax=maxtime,
                          beta=beta, gamma=gamma, sigma=sigma, mu=mu, chi=chi,
                          initvals=initial_conditions)$timeseries %>%
   set_colnames(c(expand.grid(str_c("Population_", 1:n_populations),
@@ -57,10 +57,11 @@ timeseries <- julia_call("runMANTIS", strainstructure=struct, tstep=1, tmax=1000
                              labels=c("Population A", "Population B", "Population C", "Population D"))) %>%
   as_tibble()
 
-ggplot(timeseries %>% filter(time > 0.85*max(time), strain == "Strain_11")) +
+ggplot(timeseries %>% filter(strain == "Strain_11")) +
   aes(colour=population, y=prevalence, x=time) +
-  geom_line() +
+  geom_line(size=0.75) +
   facet_grid_sc(rows=vars(variable), cols=vars(population), scales=list(y=scales_y)) +
+  scale_x_continuous(expand=c(0,0), breaks=c(860, 900, 940, 980)) +
   scale_colour_manual(values=my_cols) +
   ylab("Proportion of population") +
   theme_bw() +
