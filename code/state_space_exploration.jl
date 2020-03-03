@@ -6,7 +6,7 @@ using Distributed
 # addprocs(1)
 
 @everywhere begin
-    Base.include(Main, "./multipop_MANTIS.jl")
+    Base.include(Main, "multipop_MANTIS.jl")
     using ShiftedArrays
     function count_unique_local_minima(vector, digits=nothing)
         # -1 = extinct, 0 = stable, 1 = unconverged, >1 = chaos/cycles
