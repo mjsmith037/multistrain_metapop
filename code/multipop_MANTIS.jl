@@ -86,7 +86,8 @@ function runMANTIS(;strainstructure=[2 2], tmax=1000, tstep=1:1000,
 
     # run the simulation and return a timeseries as well as the parametrization
     prob = ODEProblem(mantis!, initcond, (0.0, tmax), params)
-    sol = solve(prob, saveat=tstep, isoutofdomain=(u,p,t) -> any(x -> (x < 0) | (x > 1), u))
+    sol = solve(prob, saveat=tstep, abstol=1e-12, reltol=1e-12,
+                isoutofdomain=(u,p,t) -> any(x -> (x < 0) | (x > 1), u))
     return(Dict("timeseries" => filter(row -> row[end] ∈ tstep,
                                        DataFrame(hcat([[reshape(u, (1,prod(size(u))))..., t]
                                                            for (u,t) in tuples(sol)]...)')),
