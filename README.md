@@ -1,3 +1,5 @@
+NOTE: this repository is superceded by [metapop_local_dynamics](https://github.com/mjsmith037/metapop_local_dynamics).
+
 # Multi-strain disease dynamics on metapopulation networks
 
 Public code repository associated with the publication [Multi-strain disease dynamics on metapopulation networks](https://www.authorea.com/users/251349/articles/339827-multi-strain-disease-dynamics-on-metapopulation-networks).
